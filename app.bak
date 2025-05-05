@@ -1,0 +1,91 @@
+
+from flask import Flask, request, jsonify, send_file, render_template
+from flasgger import Swagger
+import pandas as pd
+import re
+import os
+
+app = Flask(__name__, template_folder='templates')
+swagger = Swagger(app)
+
+abbreviation_dict = {
+    "Accessory": "Accy", "Actuator": "Act", "Adapter": "Adapt", "Aluminum": "Alum", "Aluminium": "Alum",
+    "Analog": "Anlg", "Assembly": "Assy", "Averaging": "Avg", "BACnet": "Bnet", "Black": "Blk",
+    "Blower": "Blwr", "Breaker": "Brkr", "Bronze": "Brz", "Butterfly": "Bfly", "Cable": "Cbl",
+    "Capacitor": "Cap", "Capillary": "Cap", "Check": "Chk", "Compressor": "Comp", "Controller": "Ctrlr",
+    "Control": "Ctrl", "Copper": "Cu", "Cover": "Cvr", "Detector": "Detect", "Differential": "Diff",
+    "Electric": "Elec", "Enclosure": "Encl", "Evaporator": "Evap", "Expansion": "Exp", "Flange": "Flg",
+    "Flare": "Flr", "Floating": "Flt", "Gasket": "Gskt", "Hazardous": "Hzrd", "Heater": "Htr",
+    "Heat": "Ht", "High": "Hi", "Level": "Lvl", "Low": "Lo", "Modulating": "Mod", "Modular": "Mod",
+    "Motor": "Mtr", "Mounted": "Mtd", "Mount": "Mt", "Mounting": "Mtg", "Pack": "Pk", "Package": "Pkg",
+    "Panel": "Pnl", "Plate": "Plt", "Pressure": "Press", "Probe": "Prb", "Programmable": "Prog",
+    "Programming": "Prog", "Program": "Prog", "Regulator": "Reg", "Relay": "Rly", "Relief": "Rlf",
+    "Remote": "Rmt", "Sensor": "Sens", "Sens": "Sns", "Setpoint": "SetPt", "Set Point": "SetPt",
+    "StainlessSteel": "SS", "Stanless Steel": "SS", "Sweat": "Swt", "Switch": "Sw", "Temperature": "Temp",
+    "Thermistor": "Thrmst", "Thermostat": "Tstat", "Transceiver": "Trnsvr", "Transmitter": "Trnsmt",
+    "Valve": "Vlv", "Water": "Wtr", "White": "Wht", "Without": "w/o", "With": "w/", "Explosion": "Expl",
+    "Proof": "Prf", "Protection": "Prot", "Double": "Dbl", "Minutes": "Min", "Minute": "Min",
+    "Inches": """, "Inch": """, "º": "Deg", "Piece": "Pc", "Voltage": "Volt", "Amps": "Amp",
+    "Board": "Brd", "Extension": "Ext", "Transformer": "Xfrmr", "ExplPrf": "X-Prf", "Standard": "Std",
+    "Round": "Rnd", "Density": "Dens", "Reflector": "Rflctr", "Disconnect": "Discon", "Regulating": "Reg",
+    "Replacement": "Repl", "Infrared": "IR", "Filter": "Filt", "Pannel": "Pnl", "Included": "Incl",
+    "Includes": "Incl", "Mted": "Mtd", "Position": "Pos", "Manual Reset": "MR", "Damper": "Dmpr",
+    "Label": "Lbl"
+}
+
+def apply_abbreviation_rules(phrase, target_length=30):
+    words = phrase.split()
+    original_length = len(phrase)
+    abbreviations_applied = []
+
+    for i, word in enumerate(words):
+        clean_word = re.sub(r'[^\w/]', '', word)
+        if clean_word in abbreviation_dict:
+            abbr = abbreviation_dict[clean_word]
+            new_phrase = phrase.replace(word, abbr, 1)
+            if len(new_phrase) <= target_length:
+                phrase = new_phrase
+                abbreviations_applied.append(f"{clean_word}→{abbr}")
+            elif len(phrase) > target_length:
+                phrase = new_phrase
+                abbreviations_applied.append(f"{clean_word}→{abbr}")
+        if len(phrase) <= target_length:
+            break
+
+    final_length = len(phrase)
+    return phrase, original_length, abbreviations_applied, final_length
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/abbreviate', methods=['POST'])
+def abbreviate():
+    """Abbreviate HVAC part definitions from uploaded Excel.
+    ---
+    consumes:
+      - multipart/form-data
+    parameters:
+      - in: formData
+        name: file
+        type: file
+        required: true
+        description: Excel file with part definitions
+    responses:
+      200:
+        description: File with abbreviations
+    """
+    file = request.files.get('file')
+    if not file:
+        return jsonify({"error": "No file provided"}), 400
+
+    df = pd.read_excel(file)
+    for idx, defn in enumerate(df["Part Definition"]):
+        final, orig_len, applied, final_len = apply_abbreviation_rules(str(defn))
+        df.loc[idx, "Abbreviation"] = final
+
+    df.to_excel("output.xlsx", index=False)
+    return send_file("output.xlsx", as_attachment=True)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)

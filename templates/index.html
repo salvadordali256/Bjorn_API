@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bjorn HVAC Abbreviation Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .upload-form {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background-color: #45a049;
+        }
+        .message {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        .instructions {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e7f3fe;
+            border-left: 6px solid #2196F3;
+        }
+        #loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .note {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            display: none;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .preview-section {
+            margin-top: 20px;
+            display: none;
+        }
+        .download-btn {
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Bjorn HVAC Abbreviation Tool</h1>
+        
+        <div class="upload-form">
+            <div class="form-group">
+                <label for="file">Select CSV file with HVAC part definitions:</label>
+                <input type="file" id="file" accept=".csv">
+                <div class="note">File should contain a column named "Part Definition"</div>
+            </div>
+            <button id="upload-btn" class="btn">Process File</button>
+        </div>
+        
+        <div class="nav-link">
+            <a href="/train" class="btn btn-secondary">ML Training Interface</a>
+        </div>
+        <div id="loading">
+            Processing... Please wait.
+        </div>
+        
+        <div id="message" class="message" style="display:none;"></div>
+        
+        <div id="preview-section" class="preview-section">
+            <h3>Results Preview:</h3>
+            <table id="results-table">
+                <thead>
+                    <tr>
+                        <th>Original</th>
+                        <th>Abbreviated</th>
+                        <th>Confidence</th>
+                    </tr>
+                </thead>
+                <tbody id="results-body">
+                </tbody>
+            </table>
+            <button id="download-btn" class="btn download-btn">Download Full Results</button>
+        </div>
+        
+        <div class="instructions">
+            <h3>Features:</h3>
+            <ul>
+                <li>Automatically abbreviates HVAC part descriptions to under 30 characters</li>
+                <li>Uses industry-standard abbreviations for consistency</li>
+                <li>AI verification ensures abbreviations maintain meaning</li>
+                <li>Provides confidence scores for each abbreviation</li>
+                <li>Tracks which abbreviation rules were applied</li>
+                <li>Offers suggestions for improving abbreviations</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const uploadBtn = document.getElementById('upload-btn');
+            const fileInput = document.getElementById('file');
+            const loading = document.getElementById('loading');
+            const message = document.getElementById('message');
+            const previewSection = document.getElementById('preview-section');
+            const resultsTable = document.getElementById('results-table');
+            const resultsBody = document.getElementById('results-body');
+            const downloadBtn = document.getElementById('download-btn');
+            
+            let processedData = null;
+            
+            uploadBtn.addEventListener('click', async function() {
+                if (!fileInput.files.length) {
+                    showMessage('Please select a file first.', 'error');
+                    return;
+                }
+                
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                
+                // Show loading indicator
+                loading.style.display = 'block';
+                message.style.display = 'none';
+                previewSection.style.display = 'none';
+                
+                try {
+                    const response = await fetch('/abbreviate', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    loading.style.display = 'none';
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.success) {
+                            // Store processed data
+                            processedData = data.csv_data;
+                            
+                            // Display success message
+                            showMessage('File processed successfully!', 'success');
+                            
+                            // Display preview
+                            displayPreview(data.csv_data);
+                        } else {
+                            showMessage(`Error: ${data.error || 'Unknown error'}`, 'error');
+                        }
+                    } else {
+                        // Handle error response
+                        try {
+                            const errorData = await response.json();
+                            showMessage(`Error: ${errorData.error || 'Unknown error'}`, 'error');
+                        } catch (e) {
+                            showMessage(`Error: Failed to process file`, 'error');
+                        }
+                    }
+                } catch (err) {
+                    loading.style.display = 'none';
+                    showMessage(`Error: ${err.message || 'Failed to process file'}`, 'error');
+                }
+            });
+            
+            downloadBtn.addEventListener('click', function() {
+                if (processedData) {
+                    // Create a blob with the CSV data
+                    const blob = new Blob([processedData], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    // Create a download link
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'abbreviated_hvac_parts.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                }
+            });
+            
+            function showMessage(text, type) {
+                message.textContent = text;
+                message.className = `message ${type}`;
+                message.style.display = 'block';
+            }
+            
+            function displayPreview(csvData) {
+                // Parse CSV data
+                const lines = csvData.split('\n');
+                if (lines.length < 2) return;
+                
+                const headers = parseCSVLine(lines[0]);
+                
+                // Find column indices
+                const partDefIdx = headers.indexOf('Part Definition');
+                const abbrIdx = headers.indexOf('Abbreviation');
+                const confIdx = headers.indexOf('AI Confidence');
+                
+                if (partDefIdx === -1 || abbrIdx === -1) return;
+                
+                // Clear previous results
+                resultsBody.innerHTML = '';
+                
+                // Add up to 5 rows to the preview table
+                const maxRows = Math.min(lines.length - 1, 5);
+                for (let i = 1; i <= maxRows; i++) {
+                    if (lines[i].trim() === '') continue;
+                    
+                    const row = parseCSVLine(lines[i]);
+                    if (row.length <= Math.max(partDefIdx, abbrIdx)) continue;
+                    
+                    const tr = document.createElement('tr');
+                    
+                    const tdOrig = document.createElement('td');
+                    tdOrig.textContent = row[partDefIdx];
+                    tr.appendChild(tdOrig);
+                    
+                    const tdAbbr = document.createElement('td');
+                    tdAbbr.textContent = row[abbrIdx];
+                    tr.appendChild(tdAbbr);
+                    
+                    const tdConf = document.createElement('td');
+                    tdConf.textContent = confIdx !== -1 ? row[confIdx] : 'N/A';
+                    tr.appendChild(tdConf);
+                    
+                    resultsBody.appendChild(tr);
+                }
+                
+                // Show preview section
+                resultsTable.style.display = 'table';
+                previewSection.style.display = 'block';
+            }
+            
+            function parseCSVLine(line) {
+                // Simple CSV parser (doesn't handle all edge cases)
+                const result = [];
+                let current = '';
+                let inQuotes = false;
+                
+                for (let i = 0; i < line.length; i++) {
+                    const char = line[i];
+                    
+                    if (char === '"') {
+                        inQuotes = !inQuotes;
+                    } else if (char === ',' && !inQuotes) {
+                        result.push(current);
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                
+                result.push(current);
+                return result;
+            }
+        });
+    </script>
+</body>
+</html>
